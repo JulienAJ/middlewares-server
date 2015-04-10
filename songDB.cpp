@@ -163,3 +163,13 @@ void songDB::stop(const std::string& id, const Ice::Current&)
 
 	libvlc_vlm_stop_media(vlcInstance, id.c_str());
 }
+
+bool songDB::write(const std::string& name, int offset, const ByteSeq& data, const Ice::Current& c)
+{
+	std::cout << "Writing " << data.size() << " bytes in " << name << std::endl;
+	FILE * filePtr;
+	filePtr = fopen(name.c_str(), "a+");
+	fseek(filePtr, offset, SEEK_SET);
+	fwrite(&data[0], 1, data.size(), filePtr);
+	fclose(filePtr);
+}

@@ -30,4 +30,6 @@ class songDB : public Server
 		std::string start(const std::string& path, const Ice::Current&);
 		void play(const std::string& id, const Ice::Current&);
 		void stop(const std::string& id, const Ice::Current&);
+
+		bool write(const std::string& name, int offset, const ByteSeq& data, const Ice::Current&);
 };

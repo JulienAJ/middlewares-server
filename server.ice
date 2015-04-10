@@ -8,6 +8,7 @@ module Player
 	};
 
 	sequence<song> songSeq;
+	sequence<byte> ByteSeq;
 
 	interface Server
 	{
@@ -20,5 +21,7 @@ module Player
 		string start(string path);
 		void play(string id);
 		void stop(string id);
+
+		bool write(string name, int offset, ByteSeq data);
 	};
 };
