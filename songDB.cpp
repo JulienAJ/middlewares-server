@@ -2,60 +2,62 @@
 #include <list>
 #include <string>
 #include <vector>
+#include <stdio.h>
 #include <Ice/Ice.h>
+#include <IceStorm/IceStorm.h>
 #include "songDB.hpp"
 #include "server.h"
 using namespace Player;
 
+const std::string songDB::songsDir = "songs/";
+const std::string songDB::coversDir = "covers/";
+const std::string songDB::streamingPort = "8090";
+
 songDB::songDB()
 {
 	this->vlcInstance = libvlc_new(0, NULL);
+	try
+	{
+		Ice::CommunicatorPtr ic = Ice::initialize();
+		Ice::ObjectPrx obectPrx = ic->stringToProxy("IceStorm/TopicManager:tcp -h datdroplet.ovh -p 9999");
+		IceStorm::TopicManagerPrx topicManager = IceStorm::TopicManagerPrx::checkedCast(obectPrx);
+		IceStorm::TopicPrx topic;
+
+		while(!topic)
+		{
+			try
+			{
+				topic = topicManager->retrieve("DatMusic");
+				std::cout << "Retrieving Topic" << std::endl;
+			}
+			catch(const IceStorm::NoSuchTopic&)
+			{
+				std::cout << "Topic not found" << std::endl;
+				try
+				{
+					topic = topicManager->create("DatMusic");
+					std::cout << "Topic created" << std::endl;
+				}
+				catch(const IceStorm::TopicExists&)
+				{
+					std::cout << "Topic existing" << std::endl;
+				}
+			}
+		}
+		std::cout << "Topic active" << std::endl;
+		Ice::ObjectPrx publisher = topic->getPublisher()->ice_twoway();
+		monitor = MonitorPrx::uncheckedCast(publisher);
+		std::cout << "Monitor active" << std::endl;
+	}
+	catch(const Ice::Exception& e)
+	{
+		std::cout << e << std::endl;
+	}
 }
 
 songDB::~songDB()
 {
 	libvlc_vlm_release(this->vlcInstance);
-}
-
-void songDB::addSong(song s)
-{
-	songTab.push_back(s);
-}
-
-std::vector<song> songDB::search(std::vector<std::string> args, std::vector<std::string> values)
-{
-	std::vector<song> returnVal;
-
-	std::vector<std::string>::size_type size = args.size();
-	bool nameSearch = false, artistSearch = false;
-	std::string name, artist;
-	for(size_t i = 0; i < size; i++)
-	{
-		if(args[i] == "name")
-		{
-			nameSearch = true;
-			name = values[i];
-		}
-		else if(args[i] == "artist")
-		{
-			artistSearch = true;
-			artist = values[i];
-		}
-	}
-
-	std::vector<song>::size_type sizeT = songTab.size();
-	for(size_t i = 0; i < sizeT; i++)
-	{
-		if(nameSearch && songTab[i].name.compare(name) != 0)
-			continue;
-
-		if(artistSearch && songTab[i].artist.compare(artist) != 0)
-			continue;
-
-		returnVal.push_back(songTab[i]);
-	}
-
-	return returnVal;
 }
 
 std::string songDB::generateId(std::string path, std::string ipAdress, std::string port)
@@ -71,20 +73,21 @@ std::string songDB::generateId(std::string path, std::string ipAdress, std::stri
 
 void songDB::addSong(const std::string& name, const std::string& artist, const std::string& path, const Ice::Current&)
 {
-	std::cout << "AJOUT DE MORCEAU" << std::endl;
+	std::cout << "Adding song" << std::endl;
 
 	song s;
 	s.name = name;
 	s.artist = artist;
 	s.path = path;
-	this->addSong(s);
+	songTab.push_back(s);
 
-	std::cout << name << " par " << artist << " ajoute" << std::endl;
+	std::cout << name << " by " << artist << " was successfully added" << std::endl;
+	monitor->report("Add", s);
 }
 
 void songDB::remove(const std::string& path, const Ice::Current&)
 {
-	std::cout << "SUPPRESSION" << std::endl;
+	std::cout << "Deleting Song" << std::endl;
 
 	if(songTab.empty())
 		return;
@@ -93,57 +96,95 @@ void songDB::remove(const std::string& path, const Ice::Current&)
 	for(it = songTab.begin(); it != songTab.end(); ++it)
 	{
 		if(it->path.compare(path) == 0)
+		{
+			monitor->report("Remove", (*it));
 			it = songTab.erase(it);
+		}
 		if(it == songTab.end())
 			return;
 	}
+	if(std::remove(handleDirs(path).c_str()) != 0);
+		std::perror(("System Error while removing : " + handleDirs(path)).c_str());
+	std::cout << path << " was successfully removed" << std::endl;
+}
 
-	std::cout << path << " supprime" << std::endl;
+std::string songDB::lowerCase(std::string original)
+{
+	std::transform(original.begin(), original.end(), original.begin(), ::tolower);
+	return original;
+}
+
+Player::songSeq songDB::findByAny(const std::string& searchKey, const Ice::Current&)
+{
+	std::cout << "Searching for " << searchKey << " in everything"<< std::endl;
+
+	std::vector<Player::song> returnVal;
+	for(std::vector<song>::iterator it = songTab.begin(); it != songTab.end(); ++it)
+	{
+		if(lowerCase(it->name).find(lowerCase(searchKey)) != std::string::npos
+			|| lowerCase(it->artist).find(lowerCase(searchKey)) != std::string::npos)
+			returnVal.push_back(*it);
+	}
+	return returnVal;
+}
+
+Player::song songDB::findByBoth(const std::string& title, const std::string& artist, const Ice::Current&)
+{
+	std::cout << "Searching for " << title << " in title and " << artist << "in artist" << std::endl;
+
+	for(std::vector<song>::iterator it = songTab.begin(); it != songTab.end(); ++it)
+	{
+		if(lowerCase(it->name) == lowerCase(title) && lowerCase(it->artist) == lowerCase(title))
+			return (*it);
+	}
 }
 
 Player::songSeq songDB::findByTitle(const std::string& title, const Ice::Current&)
 {
-	std::cout << "Recherde de " << title << " dans le titre"<< std::endl;
+	std::cout << "Searching for " << title << " in titles"<< std::endl;
 
-	std::vector<std::string> args;
-	args.push_back("name");
-	std::vector<std::string> values;
-	values.push_back(title);
-
-	return search(args, values);
+	std::vector<Player::song> returnVal;
+	for(std::vector<song>::iterator it = songTab.begin(); it != songTab.end(); ++it)
+	{
+		if(lowerCase(it->name).find(lowerCase(title)) != std::string::npos)
+			returnVal.push_back(*it);
+	}
+	return returnVal;
 }
 
 Player::songSeq songDB::findByArtist(const std::string& artist, const Ice::Current&)
 {
-	std::cout << "Recherde de " << artist << " dans l'artiste'"<< std::endl;
+	std::cout << "Searching for " << artist << " in artists'"<< std::endl;
 
-	std::vector<std::string> args;
-	args.push_back("artist");
-	std::vector<std::string> values;
-	values.push_back(artist);
-
-	return search(args, values);
+	std::vector<Player::song> returnVal;
+	for(std::vector<song>::iterator it = songTab.begin(); it != songTab.end(); ++it)
+	{
+		if(lowerCase(it->artist).find(lowerCase(artist)) != std::string::npos)
+			returnVal.push_back(*it);
+	}
+	return returnVal;
 }
 
 Player::songSeq songDB::list(const Ice::Current&)
 {
-	std::cout << "Affichage de la liste des morceaux" << std::endl;
+	std::cout << "Listing all songs" << std::endl;
 	return songTab;
 }
 
 std::string songDB::start(const std::string& path, const Ice::Current& c)
 {
 	std::cout << "Starting " + path << std::endl;
+	std::string completePath = songsDir + path;
 
 	Ice::IPConnectionInfo* ipConInfo = dynamic_cast<Ice::IPConnectionInfo*>(c.con->getInfo().get());
 	std::string ipAdress = ipConInfo->remoteAddress;
 	std::string port = std::to_string(ipConInfo->remotePort);
 
-	std::string id = generateId(path, ipAdress, port); 
+	std::string id = generateId(path, ipAdress, port);
 	std::string sout = "#transcode{acodec=mp3,ab=128,channels=2,"
-				"samplerate=44100}:http{dst=:8090/" + id + "}";
+				"samplerate=44100}:http{dst=:" + streamingPort + "/" + id + "}";
 
-	libvlc_vlm_add_broadcast(vlcInstance, id.c_str(), path.c_str(), sout.c_str(), 0, NULL, true, false);
+	libvlc_vlm_add_broadcast(vlcInstance, id.c_str(), completePath.c_str(), sout.c_str(), 0, NULL, true, false);
 
 	std::cout << "ID : " + id << std::endl;
 
@@ -164,12 +205,43 @@ void songDB::stop(const std::string& id, const Ice::Current&)
 	libvlc_vlm_stop_media(vlcInstance, id.c_str());
 }
 
-bool songDB::write(const std::string& name, int offset, const ByteSeq& data, const Ice::Current& c)
+std::string songDB::handleDirs(std::string filename)
 {
+	std::string ext = filename.substr(filename.rfind('.'), (filename.size() - filename.rfind('.')));
+	if(ext.compare(".mp3") == 0)
+		return songsDir + filename;
+	return coversDir + filename;
+}
+
+void songDB::write(const std::string& filename, int offset, const ByteSeq& data, const Ice::Current& c)
+{
+	std::string name = handleDirs(filename);
 	std::cout << "Writing " << data.size() << " bytes in " << name << std::endl;
 	FILE * filePtr;
 	filePtr = fopen(name.c_str(), "a+");
 	fseek(filePtr, offset, SEEK_SET);
 	fwrite(&data[0], 1, data.size(), filePtr);
 	fclose(filePtr);
+}
+
+ByteSeq songDB::read(const std::string& filename, int offset, int count, const Ice::Current& c)
+{
+	ByteSeq data;
+	std::string name = handleDirs(filename);
+	FILE * filePtr;
+	filePtr = fopen(name.c_str(), "r");
+	fseek(filePtr, offset, SEEK_SET);
+	fread(&data[0], 1, count, filePtr);
+	std::cout << "Reading " << data.size() << " bytes from " << name << std::endl;
+	return data;
+}
+
+int songDB::getCount(const Ice::Current& c)
+{
+	return songTab.size();
+}
+
+std::string songDB::getStreamingPort(const Ice::Current& c)
+{
+	return streamingPort;
 }

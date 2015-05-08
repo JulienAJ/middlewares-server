@@ -1,6 +1,6 @@
 CPP=g++
 
-CPPFLAGS= -I. -lIce -lIceUtil -pthread -lvlc -std=c++11
+CPPFLAGS= -I. -lIce -lIceStorm -lIceUtil -pthread -lvlc -std=c++11
 
 all: sliceToAll Server
 
