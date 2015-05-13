@@ -33,6 +33,9 @@ module Player
 
 	interface Monitor
 	{
-		void report(string action, song s);
+		void songRemoved(song s);
+		void newSong(song s);
+		void serverUp();
+		void serverDown();
 	};
 };

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <stdio.h>
+#include <unistd.h>
 #include <Ice/Ice.h>
 #include <IceStorm/IceStorm.h>
 #include "songDB.hpp"
@@ -48,6 +49,8 @@ songDB::songDB()
 		Ice::ObjectPrx publisher = topic->getPublisher()->ice_twoway();
 		monitor = MonitorPrx::uncheckedCast(publisher);
 		std::cout << "Monitor active" << std::endl;
+
+		monitor->serverUp();
 	}
 	catch(const Ice::Exception& e)
 	{
@@ -58,6 +61,7 @@ songDB::songDB()
 songDB::~songDB()
 {
 	libvlc_vlm_release(this->vlcInstance);
+	monitor->serverDown();
 }
 
 std::string songDB::generateId(std::string path, std::string ipAdress, std::string port)
@@ -82,7 +86,7 @@ void songDB::addSong(const std::string& name, const std::string& artist, const s
 	songTab.push_back(s);
 
 	std::cout << name << " by " << artist << " was successfully added" << std::endl;
-	monitor->report("Add", s);
+	monitor->newSong(s);
 }
 
 void songDB::remove(const std::string& path, const Ice::Current&)
@@ -97,13 +101,13 @@ void songDB::remove(const std::string& path, const Ice::Current&)
 	{
 		if(it->path.compare(path) == 0)
 		{
-			monitor->report("Remove", (*it));
+			monitor->songRemoved(*it);
 			it = songTab.erase(it);
 		}
 		if(it == songTab.end())
 			return;
 	}
-	if(std::remove(handleDirs(path).c_str()) != 0);
+	if(unlink(handleDirs(path).c_str()) != 0);
 		std::perror(("System Error while removing : " + handleDirs(path)).c_str());
 	std::cout << path << " was successfully removed" << std::endl;
 }
@@ -238,6 +242,7 @@ ByteSeq songDB::read(const std::string& filename, int offset, int count, const I
 
 int songDB::getCount(const Ice::Current& c)
 {
+	std::cout << "Giving number of songs in the DB : " << songTab.size() << std::endl;
 	return songTab.size();
 }
 
