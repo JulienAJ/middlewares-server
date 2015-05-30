@@ -51,6 +51,9 @@ songDB::songDB()
 		std::cout << "Monitor active" << std::endl;
 
 		monitor->serverUp();
+		char cwd[1024];
+		if(getcwd(cwd, sizeof(cwd)) != NULL)
+			fprintf(stdout, "Current working dir: %s\n", cwd);
 	}
 	catch(const Ice::Exception& e)
 	{
@@ -60,13 +63,14 @@ songDB::songDB()
 
 songDB::~songDB()
 {
+	std::cout << "Destructor" << std::endl;
 	libvlc_vlm_release(this->vlcInstance);
 	monitor->serverDown();
 }
 
-std::string songDB::generateId(std::string path, std::string ipAdress, std::string port)
+std::string songDB::generateId(std::string ipAdress, std::string port)
 {
-	std::string result = ipAdress + port + path;
+	std::string result = ipAdress + port + ".mp3";
 	size_t pos;
 	while((pos = result.find(':')) != std::string::npos)
 	{
@@ -75,7 +79,7 @@ std::string songDB::generateId(std::string path, std::string ipAdress, std::stri
 	return result;
 }
 
-void songDB::addSong(const std::string& name, const std::string& artist, const std::string& path, const Ice::Current&)
+void songDB::addSong(const std::string& name, const std::string& artist, const std::string& path, const std::string& coverPath, const Ice::Current&)
 {
 	std::cout << "Adding song" << std::endl;
 
@@ -83,6 +87,7 @@ void songDB::addSong(const std::string& name, const std::string& artist, const s
 	s.name = name;
 	s.artist = artist;
 	s.path = path;
+	s.coverPath = coverPath;
 	songTab.push_back(s);
 
 	std::cout << name << " by " << artist << " was successfully added" << std::endl;
@@ -92,6 +97,7 @@ void songDB::addSong(const std::string& name, const std::string& artist, const s
 void songDB::remove(const std::string& path, const Ice::Current&)
 {
 	std::cout << "Deleting Song" << std::endl;
+	std::cout << handleDirs(path) << std::endl;
 
 	if(songTab.empty())
 		return;
@@ -107,8 +113,10 @@ void songDB::remove(const std::string& path, const Ice::Current&)
 		if(it == songTab.end())
 			return;
 	}
-	if(unlink(handleDirs(path).c_str()) != 0);
-		std::perror(("System Error while removing : " + handleDirs(path)).c_str());
+	std::string realPath = handleDirs(path);
+	if(::remove(realPath.c_str()) != 0)
+		std::cout << "error madafak" << std::endl;
+		//::perror(("System Error while removing : " + realPath).c_str());
 	std::cout << path << " was successfully removed" << std::endl;
 }
 
@@ -184,7 +192,7 @@ std::string songDB::start(const std::string& path, const Ice::Current& c)
 	std::string ipAdress = ipConInfo->remoteAddress;
 	std::string port = std::to_string(ipConInfo->remotePort);
 
-	std::string id = generateId(path, ipAdress, port);
+	std::string id = generateId(ipAdress, port);
 	std::string sout = "#transcode{acodec=mp3,ab=128,channels=2,"
 				"samplerate=44100}:http{dst=:" + streamingPort + "/" + id + "}";
 
@@ -231,13 +239,32 @@ void songDB::write(const std::string& filename, int offset, const ByteSeq& data,
 ByteSeq songDB::read(const std::string& filename, int offset, int count, const Ice::Current& c)
 {
 	ByteSeq data;
+	data.reserve(count);
 	std::string name = handleDirs(filename);
 	FILE * filePtr;
 	filePtr = fopen(name.c_str(), "r");
 	fseek(filePtr, offset, SEEK_SET);
-	fread(&data[0], 1, count, filePtr);
-	std::cout << "Reading " << data.size() << " bytes from " << name << std::endl;
-	return data;
+	unsigned char temp[count];
+	fread(&temp[0], 1, count, filePtr);
+	std::cout << "Reading " << sizeof(temp) << " bytes from " << name << std::endl;
+	fclose(filePtr);
+	std::vector<unsigned char> ret(temp, temp + sizeof(temp));
+	std::cout << "Sending " << ret.size() << " bytes from " << name << std::endl;
+	return ret;
+}
+
+int songDB::getFileSize(const std::string& filename, const Ice::Current&)
+{
+	std::string name = handleDirs(filename);
+	FILE * filePtr;
+	filePtr = fopen(name.c_str(), "r");
+	if(filePtr == NULL)
+		std::cout << "Can't open file" << std::endl;
+	fseek(filePtr, 0, SEEK_END);
+	int size = ftell(filePtr);
+	std::cout << "Size of " << name << " : " << size << std::endl;
+	fclose(filePtr);
+	return size;
 }
 
 int songDB::getCount(const Ice::Current& c)

@@ -18,7 +18,7 @@ class songDB : public Server
 		libvlc_instance_t* vlcInstance;
 		MonitorPrx monitor;
 
-		std::string generateId(std::string path, std::string ipAdress, std::string port);
+		std::string generateId(std::string ipAdress, std::string port);
 		std::string lowerCase(std::string original);
 		std::string handleDirs(std::string filename);
 
@@ -30,7 +30,7 @@ class songDB : public Server
 		std::string getStreamingPort(const Ice::Current& c);
 
 		// Database management
-		void addSong(const std::string& name, const std::string& artist, const std::string& path, const Ice::Current&);
+		void addSong(const std::string& name, const std::string& artist, const std::string& path, const std::string& coverPath, const Ice::Current&);
 		void remove(const std::string& path, const Ice::Current&);
 
 		// Research
@@ -48,4 +48,5 @@ class songDB : public Server
 		// File upload
 		void write(const std::string& name, int offset, const ByteSeq& data, const Ice::Current&);
 		ByteSeq read(const std::string& filename, int offset, int count, const Ice::Current& c);
+		int getFileSize(const std::string& filename, const Ice::Current& c);
 };

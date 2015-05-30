@@ -2,12 +2,7 @@ CPP=g++
 
 CPPFLAGS= -I. -lIce -lIceStorm -lIceUtil -pthread -lvlc -std=c++11
 
-all: sliceToAll Server
-
-# JAVA CLIENT
-
-runClient:
-	$(JAVA) -classpath $(JAVACLASSPATH) Client
+all: sliceToCpp Server
 
 # SERVER
 
@@ -23,18 +18,26 @@ server.o: server.cpp server.h
 songDB.o: songDB.cpp songDB.hpp
 	$(CPP) -c $< -o $@ $(CPPFLAGS)
 
-runServer:
+run:
 	./Server
 
 # SLICE TO CODE
-
-sliceToAll: sliceToCpp
 
 sliceToCpp: server.ice
 	slice2cpp $<
 
 cleanIce: server.h server.cpp
 	rm -f $^
+
+# GLACIER
+
+runGlacier:
+	glacier2router --Ice.Config=glacier2.cfg
+
+# ICEBOX
+
+runIceBox:
+	icebox --Ice.Config=icebox.cfg
 
 # CLEAN
 

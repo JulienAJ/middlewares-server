@@ -5,6 +5,7 @@ module Player
 		string name;
 		string artist;
 		string path;
+		string coverPath;
 	};
 
 	sequence<song> songSeq;
@@ -15,7 +16,7 @@ module Player
 		int getCount();
 		string getStreamingPort();
 
-		void addSong(string name, string artist, string path);
+		void addSong(string name, string artist, string path, string coverPath);
 		void remove(string path);
 		songSeq findByTitle(string name);
 		songSeq findByArtist(string artist);
@@ -29,6 +30,7 @@ module Player
 
 		void write(string name, int offset, ByteSeq data);
 		ByteSeq read(string filename, int offset, int count);
+		int getFileSize(string path);
 	};
 
 	interface Monitor
